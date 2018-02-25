@@ -17,6 +17,7 @@ matrix:
         - export ${!TRAVIS*}
         - tox -e docsV
 python:
+  - 3.6
   - 3.5
   - 3.4
   - 3.3
