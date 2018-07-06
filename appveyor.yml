@@ -19,8 +19,8 @@ environment:
 
 # Run.
 before_test:
-    git config --global user.email "builds@appveyor.com"
-    git config --global user.name "AppVeyor"
+    - git config --global user.email "builds@appveyor.com"
+    - git config --global user.name "AppVeyor"
 build_script: pip install tox
 test_script: tox -e %TOX_ENV%
 on_success: IF %TOX_ENV% NEQ lint pip install codecov & codecov
