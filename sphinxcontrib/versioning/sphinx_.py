@@ -172,7 +172,7 @@ class ConfigInject(SphinxConfig):
         self.extensions.append('sphinxcontrib.versioning.sphinx_')
 
 
-def _build(argv, config, versions, current_name, is_root):
+def _build(argv, config, versions, current_name, is_root, venv_bin_path=None):
     """Build Sphinx docs via multiprocessing for isolation.
 
     :param tuple argv: Arguments to pass to Sphinx.
@@ -182,6 +182,11 @@ def _build(argv, config, versions, current_name, is_root):
     :param bool is_root: Is this build in the web root?
     """
     # Patch.
+
+    if venv_bin_path is not None:
+        activate_this = os.path.join(venv_bin_path, 'activate_this.py')
+        exec(open(activate_this).read(), {'__file__':activate_this})
+
     application.Config = ConfigInject
     if config.show_banner:
         EventHandlers.BANNER_GREATEST_TAG = config.banner_greatest_tag
@@ -222,7 +227,7 @@ def _read_config(argv, config, current_name, queue):
     _build(argv, config, Versions(list()), current_name, False)
 
 
-def build(source, target, versions, current_name, is_root):
+def build(source, target, versions, current_name, is_root, temp_env=None):
     """Build Sphinx docs for one version. Includes Versions class instance with names/urls in the HTML context.
 
     :raise HandledError: If sphinx-build fails. Will be logged before raising.
@@ -236,9 +241,13 @@ def build(source, target, versions, current_name, is_root):
     log = logging.getLogger(__name__)
     argv = ('sphinx-build', source, target)
     config = Config.from_context()
+    if temp_env is not None:
+        venv_bin_path = temp_env.bin_path
+    else:
+        venv_bin_path = None
 
     log.debug('Running sphinx-build for %s with args: %s', current_name, str(argv))
-    child = multiprocessing.Process(target=_build, args=(argv, config, versions, current_name, is_root))
+    child = multiprocessing.Process(target=_build, args=(argv, config, versions, current_name, is_root, venv_bin_path))
     child.start()
     child.join()  # Block.
     if child.exitcode != 0:

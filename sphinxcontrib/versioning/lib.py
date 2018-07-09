@@ -7,6 +7,10 @@ import os
 import shutil
 import tempfile
 import weakref
+import textwrap
+import shlex
+import subprocess
+import venv
 
 import click
 
@@ -167,3 +171,130 @@ class TempDir(object):
         shutil.rmtree(self.name, onerror=lambda *a: os.chmod(a[1], __import__('stat').S_IWRITE) or os.unlink(a[1]))
         if os.path.exists(self.name):
             raise IOError(17, "File exists: '{}'".format(self.name))
+
+def _version_from_setup_py(script_name):
+    cmd_str = 'python {} --version'.format(script_name)
+    r = subprocess.check_output(shlex.split(cmd_str), stderr=subprocess.STDOUT)
+    if isinstance(r, bytes):
+        r = r.decode('UTF-8')
+    lines = r.splitlines()
+    normalized_version = lines[-1]
+    if len(lines) == 1 or 'Normalizing' not in lines[0]:
+        return normalized_version, normalized_version
+
+    str_version = lines[0].split('Normalizing')[1].split(' to ')[0]
+    if '"' in str_version:
+        str_version = str_version.strip('"')
+    if "'" in str_version:
+        str_version = str_version.strip("'")
+    return normalized_version, str_version
+
+def _name_from_setup_py(script_name):
+    cmd_str = 'python {} --name'.format(script_name)
+    r = subprocess.check_output(shlex.split(cmd_str))
+    if isinstance(r, bytes):
+        r = r.decode('UTF-8')
+    return r.splitlines()[0]
+
+class EnvBuilder(venv.EnvBuilder):
+    ACTIVATE_THIS = textwrap.dedent("""\
+        try:
+            __file__
+        except NameError:
+            raise AssertionError(
+                "You must run this like execfile('path/to/activate_this.py', dict(__file__='path/to/activate_this.py'))")
+        import sys
+        import os
+
+        old_os_path = os.environ.get('PATH', '')
+        os.environ['PATH'] = os.path.dirname(os.path.abspath(__file__)) + os.pathsep + old_os_path
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if sys.platform == 'win32':
+            site_packages = os.path.join(base, 'Lib', 'site-packages')
+        else:
+            site_packages = os.path.join(base, 'lib', 'python%s' % sys.version[:3], 'site-packages')
+        prev_sys_path = list(sys.path)
+        import site
+        site.addsitedir(site_packages)
+        sys.real_prefix = sys.prefix
+        sys.prefix = base
+        # Move the added items to the front of the path:
+        new_sys_path = []
+        for item in list(sys.path):
+            if item not in prev_sys_path:
+                new_sys_path.append(item)
+                sys.path.remove(item)
+        sys.path[:0] = new_sys_path
+    """)
+    def create(self, env_dir):
+        super(EnvBuilder, self).create(env_dir)
+        context = self.__context
+        self.__context = None
+        return context
+    def post_setup(self, context):
+        activate_this = os.path.join(context.bin_path, 'activate_this.py')
+        with open(activate_this, 'w') as f:
+            f.write(self.ACTIVATE_THIS)
+        self.__context = context
+
+class TempEnv(TempDir):
+    def __init__(self, defer_atexit=False):
+        self.name = tempfile.mkdtemp('sphinxcontrib_versioning')
+        self.venv_path = os.path.join(self.name, 'venv')
+        self.venv_builder = EnvBuilder()
+        self.context = self.venv_builder.create(self.venv_path)
+        self.editable_installs = {}
+    @property
+    def env_exe(self):
+        return self.context.env_exe
+    @property
+    def bin_path(self):
+        return self.context.bin_path
+    def run_python(self, cmd_str):
+        cmd_str = '{self.env_exe} {cmd_str}'.format(self=self, cmd_str=cmd_str)
+        r = subprocess.check_output(shlex.split(cmd_str))
+        if isinstance(r, bytes):
+            r = r.decode('UTF-8')
+        return r
+    def pip_install(self, *requirements):
+        requirements = ' '.join(requirements)
+        cmd_str = '-m pip install {}'.format(requirements)
+        r = self.run_python(cmd_str)
+        return r
+    def pip_install_editable(self, path):
+        if os.path.basename(path) != 'setup.py':
+            script_name = os.path.join(path, 'setup.py')
+        else:
+            script_name = path
+            path = os.path.dirname(script_name)
+        if not os.path.exists(script_name):
+            print('no script_name for {}'.format(path))
+            return None
+        pkg_name = _name_from_setup_py(script_name)
+        self.uninstall_editable(pkg_name)
+
+        cmd_str = '-m pip install -e {}'.format(path)
+        r = self.run_python(cmd_str)
+        self.editable_installs[pkg_name] = script_name
+        return pkg_name
+    def uninstall_editable(self, pkg_name):
+        cmd_str = '-m pip uninstall -y {}'.format(pkg_name)
+        r = self.run_python(cmd_str)
+        if pkg_name in self.editable_installs:
+            del self.editable_installs[pkg_name]
+    def clone_local_env(self):
+        requirements = self.get_local_requirements()
+        print('detected packages: {}'.format(requirements))
+        r = self.pip_install(*requirements)
+        print(r)
+    @classmethod
+    def get_local_requirements(cls):
+        cmd_str = 'pip freeze --local --exclude-editable'
+        r = subprocess.check_output(shlex.split(cmd_str))
+        if isinstance(r, bytes):
+            r = r.decode('UTF-8')
+        return r.splitlines()
+    def __enter__(self):
+        return self
+    def __str__(self):
+        return self.name

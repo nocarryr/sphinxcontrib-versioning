@@ -7,7 +7,7 @@ import re
 import subprocess
 
 from sphinxcontrib.versioning.git import export, fetch_commits, filter_and_date, GitError, list_remote
-from sphinxcontrib.versioning.lib import Config, HandledError, TempDir
+from sphinxcontrib.versioning.lib import Config, HandledError, TempDir, TempEnv
 from sphinxcontrib.versioning.sphinx_ import build, read_config
 
 RE_INVALID_FILENAME = re.compile(r'[^0-9A-Za-z.-]')
@@ -163,23 +163,33 @@ def build_all(exported_root, destination, versions):
     """
     log = logging.getLogger(__name__)
 
-    while True:
-        # Build root.
-        remote = versions[Config.from_context().root_ref]
-        log.info('Building root: %s', remote['name'])
-        source = os.path.dirname(os.path.join(exported_root, remote['sha'], remote['conf_rel_path']))
-        build(source, destination, versions, remote['name'], True)
-
-        # Build all refs.
-        for remote in list(versions.remotes):
-            log.info('Building ref: %s', remote['name'])
+    with TempEnv() as temp_env:
+        temp_env.clone_local_env()
+        while True:
+            # Build root.
+            remote = versions[Config.from_context().root_ref]
+            log.info('Building root: %s', remote['name'])
             source = os.path.dirname(os.path.join(exported_root, remote['sha'], remote['conf_rel_path']))
-            target = os.path.join(destination, remote['root_dir'])
-            try:
-                build(source, target, versions, remote['name'], False)
-            except HandledError:
-                log.warning('Skipping. Will not be building %s. Rebuilding everything.', remote['name'])
-                versions.remotes.pop(versions.remotes.index(remote))
-                break  # Break out of for loop.
-        else:
-            break  # Break out of while loop if for loop didn't execute break statement above.
+            proj_root = os.path.join(exported_root, remote['sha'])
+            pkg_name = temp_env.pip_install_editable(proj_root)
+            build(source, destination, versions, remote['name'], True, temp_env)
+            if pkg_name is not None:
+                temp_env.uninstall_editable(pkg_name)
+
+            # Build all refs.
+            for remote in list(versions.remotes):
+                log.info('Building ref: %s', remote['name'])
+                proj_root = os.path.join(exported_root, remote['sha'])
+                pkg_name = temp_env.pip_install_editable(proj_root)
+                source = os.path.dirname(os.path.join(exported_root, remote['sha'], remote['conf_rel_path']))
+                target = os.path.join(destination, remote['root_dir'])
+                try:
+                    build(source, target, versions, remote['name'], False)
+                except HandledError:
+                    log.warning('Skipping. Will not be building %s. Rebuilding everything.', remote['name'])
+                    versions.remotes.pop(versions.remotes.index(remote))
+                    break  # Break out of for loop.
+                if pkg_name is not None:
+                    temp_env.uninstall_editable(pkg_name)
+            else:
+                break  # Break out of while loop if for loop didn't execute break statement above.
