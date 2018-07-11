@@ -8,11 +8,9 @@ import sys
 import shutil
 import tempfile
 import weakref
-import textwrap
 import shlex
 import subprocess
 import types
-import venv
 
 import click
 
