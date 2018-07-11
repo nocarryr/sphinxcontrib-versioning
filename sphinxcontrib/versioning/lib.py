@@ -255,6 +255,15 @@ class TempEnv(TempDir):
         cmd_str = '-m pip install {}'.format(requirements)
         r = self.run_python(cmd_str)
         return r
+    def is_installed(self, pkg_name):
+        cmd_str = '-m pip show {}'.format(pkg_name)
+        try:
+            r = self.run_python(cmd_str)
+        except subprocess.CalledProcessError as e:
+            if len(e.output):
+                raise
+            r = e.output
+        return len(r) > 0
     def pip_install_editable(self, path):
         if os.path.basename(path) != 'setup.py':
             script_name = os.path.join(path, 'setup.py')
@@ -265,8 +274,8 @@ class TempEnv(TempDir):
             print('no script_name for {}'.format(path))
             return None
         pkg_name = _name_from_setup_py(script_name)
-        self.uninstall_editable(pkg_name)
-
+        if self.is_installed(pkg_name):
+            self.uninstall_editable(pkg_name)
         cmd_str = '-m pip install -e {}'.format(path)
         r = self.run_python(cmd_str)
         self.editable_installs[pkg_name] = script_name
