@@ -4,12 +4,14 @@ import atexit
 import functools
 import logging
 import os
+import sys
 import shutil
 import tempfile
 import weakref
 import textwrap
 import shlex
 import subprocess
+import types
 import venv
 
 import click
@@ -196,46 +198,38 @@ def _name_from_setup_py(script_name):
         r = r.decode('UTF-8')
     return r.splitlines()[0]
 
-class EnvBuilder(venv.EnvBuilder):
-    ACTIVATE_THIS = textwrap.dedent("""\
-        try:
-            __file__
-        except NameError:
-            raise AssertionError(
-                "You must run this like execfile('path/to/activate_this.py', dict(__file__='path/to/activate_this.py'))")
-        import sys
-        import os
-
-        old_os_path = os.environ.get('PATH', '')
-        os.environ['PATH'] = os.path.dirname(os.path.abspath(__file__)) + os.pathsep + old_os_path
-        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        if sys.platform == 'win32':
-            site_packages = os.path.join(base, 'Lib', 'site-packages')
-        else:
-            site_packages = os.path.join(base, 'lib', 'python%s' % sys.version[:3], 'site-packages')
-        prev_sys_path = list(sys.path)
-        import site
-        site.addsitedir(site_packages)
-        sys.real_prefix = sys.prefix
-        sys.prefix = base
-        # Move the added items to the front of the path:
-        new_sys_path = []
-        for item in list(sys.path):
-            if item not in prev_sys_path:
-                new_sys_path.append(item)
-                sys.path.remove(item)
-        sys.path[:0] = new_sys_path
-    """)
+class EnvBuilder(object):
     def create(self, env_dir):
-        super(EnvBuilder, self).create(env_dir)
-        context = self.__context
-        self.__context = None
+        context = self.build_context(env_dir)
+        pyversion = sys.version_info
+        cmd_str = 'virtualenv --python=python{pyversion[0]}.{pyversion[1]} {env_dir}'.format(
+            pyversion=sys.version_info, env_dir=env_dir,
+        )
+        subprocess.check_call(shlex.split(cmd_str))
         return context
-    def post_setup(self, context):
-        activate_this = os.path.join(context.bin_path, 'activate_this.py')
-        with open(activate_this, 'w') as f:
-            f.write(self.ACTIVATE_THIS)
-        self.__context = context
+    def build_context(self, env_dir):
+        context = types.SimpleNamespace()
+        context.env_dir = env_dir
+        context.env_name = os.path.basename(env_dir)
+        env = os.environ
+        if sys.platform == 'darwin' and '__PYVENV_LAUNCHER__' in env:
+            executable = os.environ['__PYVENV_LAUNCHER__']
+        else:
+            executable = sys.executable
+        exename = os.path.basename(os.path.abspath(executable))
+        if sys.platform == 'win32':
+            binname = 'Scripts'
+            incpath = 'Include'
+            libpath = os.path.join(env_dir, 'Lib', 'site-packages')
+        else:
+            binname = 'bin'
+            incpath = 'include'
+            libpath = os.path.join(env_dir, 'lib',
+                                   'python%d.%d' % sys.version_info[:2],
+                                   'site-packages')
+        context.bin_path = os.path.join(env_dir, binname)
+        context.env_exe = os.path.join(context.bin_path, exename)
+        return context
 
 class TempEnv(TempDir):
     def __init__(self, defer_atexit=False):
