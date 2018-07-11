@@ -296,7 +296,7 @@ class TempEnv(TempDir):
         r = subprocess.check_output(shlex.split(cmd_str))
         if isinstance(r, bytes):
             r = r.decode('UTF-8')
-        return r.splitlines()
+        return [v for v in r.splitlines() if 'sphinxcontrib-versioning' not in v]
     def __enter__(self):
         return self
     def __str__(self):
