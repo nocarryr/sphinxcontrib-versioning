@@ -231,6 +231,40 @@ class EnvBuilder(object):
         context.env_exe = os.path.join(context.bin_path, exename)
         return context
 
+class TempPackage(object):
+    def __init__(self, temp_env, path):
+        self.temp_env_ref = weakref.ref(temp_env)
+        if os.path.basename(path) != 'setup.py':
+            script_name = os.path.join(path, 'setup.py')
+        else:
+            script_name = path
+            path = os.path.dirname(script_name)
+        self.path = path
+        self.script_name = script_name
+        if os.path.exists(script_name):
+            self.pkg_name = _name_from_setup_py(script_name)
+        else:
+            self.pkg_name = None
+        self.is_installed = False
+    def __enter__(self):
+        temp_env = self.temp_env_ref()
+        if self.pkg_name is None:
+            return self
+        if temp_env.is_installed(self.pkg_name):
+            temp_env.pip_uninstall_package(self.pkg_name)
+        temp_env.pip_install_editable(self.path)
+        self.is_installed = True
+        return self
+    def __exit__(self, *args):
+        if not self.is_installed:
+            return
+        temp_env = self.temp_env_ref()
+        if temp_env is None:
+            return
+        temp_env.pip_uninstall_package(self.pkg_name)
+        self.is_installed = False
+
+
 class TempEnv(TempDir):
     def __init__(self, defer_atexit=False):
         super(TempEnv, self).__init__(defer_atexit)
@@ -264,23 +298,14 @@ class TempEnv(TempDir):
                 raise
             r = e.output
         return len(r) > 0
+    def pip_install_context(self, path):
+        pkg = TempPackage(self, path)
+        self.editable_installs[pkg.pkg_name] = pkg
+        return pkg
     def pip_install_editable(self, path):
-        if os.path.basename(path) != 'setup.py':
-            script_name = os.path.join(path, 'setup.py')
-        else:
-            script_name = path
-            path = os.path.dirname(script_name)
-        if not os.path.exists(script_name):
-            print('no script_name for {}'.format(path))
-            return None
-        pkg_name = _name_from_setup_py(script_name)
-        if self.is_installed(pkg_name):
-            self.uninstall_editable(pkg_name)
         cmd_str = '-m pip install -e {}'.format(path)
         r = self.run_python(cmd_str)
-        self.editable_installs[pkg_name] = script_name
-        return pkg_name
-    def uninstall_editable(self, pkg_name):
+    def pip_uninstall_package(self, pkg_name):
         cmd_str = '-m pip uninstall -y {}'.format(pkg_name)
         r = self.run_python(cmd_str)
         if pkg_name in self.editable_installs:
