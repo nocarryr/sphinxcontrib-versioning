@@ -233,7 +233,7 @@ class EnvBuilder(object):
 
 class TempEnv(TempDir):
     def __init__(self, defer_atexit=False):
-        self.name = tempfile.mkdtemp('sphinxcontrib_versioning')
+        super(TempEnv, self).__init__(defer_atexit)
         self.venv_path = os.path.join(self.name, 'venv')
         self.venv_builder = EnvBuilder()
         self.context = self.venv_builder.create(self.venv_path)
