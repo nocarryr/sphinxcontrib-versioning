@@ -34,6 +34,7 @@ class Config(object):
         self.no_local_conf = False
         self.recent_tag = False
         self.show_banner = False
+        self.install_versions = False
 
         # Strings.
         self.banner_main_ref = 'master'
@@ -266,11 +267,13 @@ class TempPackage(object):
 
 
 class TempEnv(TempDir):
-    def __init__(self, defer_atexit=False):
+    def __init__(self, defer_atexit=False, enabled=True):
         super(TempEnv, self).__init__(defer_atexit)
+        self.enabled = enabled
         self.venv_path = os.path.join(self.name, 'venv')
         self.venv_builder = EnvBuilder()
-        self.context = self.venv_builder.create(self.venv_path)
+        if self.enabled:
+            self.context = self.venv_builder.create(self.venv_path)
         self.editable_installs = {}
     @property
     def env_exe(self):
@@ -279,6 +282,8 @@ class TempEnv(TempDir):
     def bin_path(self):
         return self.context.bin_path
     def run_python(self, cmd_str):
+        if not self.enabled:
+            return ''
         cmd_str = '{self.env_exe} {cmd_str}'.format(self=self, cmd_str=cmd_str)
         r = subprocess.check_output(shlex.split(cmd_str))
         if isinstance(r, bytes):

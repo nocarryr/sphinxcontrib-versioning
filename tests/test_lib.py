@@ -30,6 +30,7 @@ def test_config():
         ('git_root', None),
         ('greatest_tag', False),
         ('grm_exclude', tuple()),
+        ('install_versions', False),
         ('invert', True),
         ('local_conf', None),
         ('no_colors', False),

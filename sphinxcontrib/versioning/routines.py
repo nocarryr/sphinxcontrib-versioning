@@ -154,7 +154,7 @@ def pre_build(local_root, versions):
     return exported_root
 
 
-def build_all(exported_root, destination, versions):
+def build_all(exported_root, destination, versions, install_versions=False):
     """Build all versions.
 
     :param str exported_root: Tempdir path with exported commits as subdirectories.
@@ -163,7 +163,7 @@ def build_all(exported_root, destination, versions):
     """
     log = logging.getLogger(__name__)
 
-    with TempEnv() as temp_env:
+    with TempEnv(enabled=install_versions) as temp_env:
         temp_env.clone_local_env()
         while True:
             # Build root.

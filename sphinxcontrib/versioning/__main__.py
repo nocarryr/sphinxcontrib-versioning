@@ -114,6 +114,7 @@ class ClickCommand(click.Command):
 @click.option('-g', '--git-root', help='Path to directory in the local repo. Default is CWD.', type=IS_EXISTS_DIR)
 @click.option('-l', '--local-conf', help='Path to conf.py for SCVersioning to read config from.', type=IS_EXISTS_FILE)
 @click.option('-L', '--no-local-conf', help="Don't attempt to search for nor load a local conf.py file.", is_flag=True)
+@click.option('--install-versions', help='Install each version in an isolated virtual environment (using "pip -e")', is_flag=True)
 @click.option('-N', '--no-colors', help='Disable colors in the terminal output.', is_flag=True)
 @click.option('-v', '--verbose', help='Debug logging. Specify more than once for more logging.', count=True)
 @click.version_option(version=__version__)
@@ -308,7 +309,7 @@ def build(config, rel_source, destination, **options):
                       overwrite=True)
 
     # Build.
-    build_all(exported_root, destination, versions)
+    build_all(exported_root, destination, versions, config.install_versions)
 
     # Cleanup.
     log.debug('Removing: %s', exported_root)

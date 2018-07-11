@@ -241,7 +241,7 @@ def build(source, target, versions, current_name, is_root, temp_env=None):
     log = logging.getLogger(__name__)
     argv = ('sphinx-build', source, target)
     config = Config.from_context()
-    if temp_env is not None:
+    if temp_env is not None and temp_env.enabled:
         venv_bin_path = temp_env.bin_path
     else:
         venv_bin_path = None
