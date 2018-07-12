@@ -3,6 +3,7 @@
 import datetime
 import re
 import time
+import textwrap
 
 import pytest
 
@@ -195,6 +196,91 @@ def fx_local_light(tmpdir, local, remote):
     run(local2, ['git', 'checkout', '-qf', sha])
 
     return local2
+
+@pytest.fixture(name='local_py_package')
+def fx_local_py_package(tmpdir, local, remote):
+    """Local repository with typical python package layout
+
+    """
+    pkg_meta = {
+        'name':'test-python-package',
+        'version':'0.0.1',
+        'package':'test_py_package',
+    }
+    pkg_files = {
+        'setup.py':{
+            'path':local.join('setup.py'),
+            'template':textwrap.dedent("""\
+                from setuptools import setup
+                setup(
+                    name='{name}',
+                    version='{version}',
+                    packages=['{package}'],
+                )
+            """),
+        },
+        '__init__.py':{
+            'path':local.join(pkg_meta['package'], '__init__.py'),
+            'template':textwrap.dedent("""\
+                '''
+                .. autoclass:: {package}.TestPyClass
+                    :members:
+                '''
+                import pkg_resources
+                __version__ = pkg_resources.require('{package}')[0].version
+                class TestPyClass(object):
+                    '''Does absolutely nothing
+                    '''
+                    def add(self, i):
+                        '''Adds 1
+
+                        :param int i: Number to add 1 to
+                        :return: i + 1
+                        :rtype: int
+                        '''
+                        return i + 1
+            """),
+        },
+        'index.rst':{
+            'path':local.join('doc', 'source', 'index.rst'),
+            'template':textwrap.dedent("""\
+                Index
+                =====
+
+                .. toctree::
+
+                    api
+
+            """),
+        },
+        'api.rst':{
+            'path':local.join('doc', 'source', 'api.rst'),
+            'template':textwrap.dedent("""\
+                API
+                ===
+
+                .. automodule:: {package}
+            """),
+        },
+        'conf.py':{
+            'path':local.join('doc', 'source', 'conf.py'),
+            'template':textwrap.dedent("""\
+                from {package} import __version__
+                project = '{name}'
+                version = __version__
+                release = __version__
+                master_doc = 'index'
+                source_suffix = '.rst'
+                extensions = ['sphinx.ext.autodoc']
+            """),
+        },
+    }
+    for d in pkg_files.values():
+        content = d['template'].format(**pkg_meta)
+        d['path'].write(content, ensure=True)
+        run(local, ['git', 'add', str(d['path'])])
+    run(local, ['git', 'commit', '-m', 'Add py package'])
+    return local, {'pkg_meta':pkg_meta, 'pkg_files':pkg_files}
 
 
 @pytest.fixture
