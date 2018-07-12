@@ -195,7 +195,7 @@ def _name_from_setup_py(script_name):
     r = subprocess.check_output(shlex.split(cmd_str))
     if isinstance(r, bytes):
         r = r.decode('UTF-8')
-    return r.splitlines()[0]
+    return r.splitlines()[-1]
 
 class EnvBuilder(object):
     def create(self, env_dir):
